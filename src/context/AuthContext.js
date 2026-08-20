@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { getCurrentSession, subscribeToAuthChanges } from "../lib/auth";
+import { identifyPostHogUser, resetPostHogUser } from "../lib/posthog";
 import { logInRevenueCat, logOutRevenueCat } from "../lib/revenuecat";
 
 const AuthContext = createContext(null);
@@ -12,18 +13,20 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
-    async function syncRevenueCat(nextSession) {
+    async function syncUserServices(nextSession) {
       if (nextSession?.user?.id) {
         await logInRevenueCat(nextSession.user.id);
+        identifyPostHogUser(nextSession.user);
       } else {
         await logOutRevenueCat();
+        resetPostHogUser();
       }
     }
 
     async function loadSession() {
       const currentSession = await getCurrentSession();
 
-      await syncRevenueCat(currentSession);
+      await syncUserServices(currentSession);
 
       if (mounted) {
         setSession(currentSession);
@@ -34,7 +37,7 @@ export function AuthProvider({ children }) {
     loadSession();
 
     const subscription = subscribeToAuthChanges(async (nextSession) => {
-      await syncRevenueCat(nextSession);
+      await syncUserServices(nextSession);
 
       if (mounted) {
         setSession(nextSession);
