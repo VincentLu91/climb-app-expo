@@ -51,4 +51,11 @@ export default ({ config }) => ({
     ...config.android,
     package: getUniqueIdentifier(),
   },
+
+  plugins: [
+    ...(config.plugins || []),
+    "expo-localization",
+    "expo-video",
+    "expo-sharing",
+  ],
 });

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from "react";
 
 import { getCurrentSession, subscribeToAuthChanges } from "../lib/auth";
+import { logInRevenueCat, logOutRevenueCat } from "../lib/revenuecat";
 
 const AuthContext = createContext(null);
 
@@ -11,8 +12,18 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     let mounted = true;
 
+    async function syncRevenueCat(nextSession) {
+      if (nextSession?.user?.id) {
+        await logInRevenueCat(nextSession.user.id);
+      } else {
+        await logOutRevenueCat();
+      }
+    }
+
     async function loadSession() {
       const currentSession = await getCurrentSession();
+
+      await syncRevenueCat(currentSession);
 
       if (mounted) {
         setSession(currentSession);
@@ -22,9 +33,13 @@ export function AuthProvider({ children }) {
 
     loadSession();
 
-    const subscription = subscribeToAuthChanges((nextSession) => {
-      setSession(nextSession);
-      setLoading(false);
+    const subscription = subscribeToAuthChanges(async (nextSession) => {
+      await syncRevenueCat(nextSession);
+
+      if (mounted) {
+        setSession(nextSession);
+        setLoading(false);
+      }
     });
 
     return () => {
