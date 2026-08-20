@@ -4,13 +4,76 @@ function safeFileName(name) {
   return (name || "climbing-attempt.mp4").replace(/[^a-zA-Z0-9._-]/g, "-");
 }
 
-export async function uploadNewClimbingAttempt({ userId, video }) {
+export async function uploadClimbingAttempt({
+  userId,
+  video,
+  sessionId = null,
+}) {
   if (!userId) {
     throw new Error("You must be logged in.");
   }
 
   if (!video?.uri) {
     throw new Error("Choose a video first.");
+  }
+
+  let activeSessionId = sessionId;
+  let attemptNumber = 1;
+  let previousAnalysisText = null;
+
+  if (activeSessionId) {
+    const { data: session, error: sessionError } = await supabase
+      .from("coaching_sessions")
+      .select("id")
+      .eq("id", activeSessionId)
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (sessionError) {
+      throw sessionError;
+    }
+
+    if (!session) {
+      throw new Error("Climbing session not found.");
+    }
+
+    const { data: previousUpload, error: previousUploadError } = await supabase
+      .from("uploads")
+      .select("id, attempt_number")
+      .eq("coaching_session_id", activeSessionId)
+      .eq("user_id", userId)
+      .eq("media_type", "video")
+      .order("attempt_number", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (previousUploadError) {
+      throw previousUploadError;
+    }
+
+    if (previousUpload) {
+      attemptNumber = (previousUpload.attempt_number ?? 0) + 1;
+
+      const { data: previousAnalysis, error: previousAnalysisError } =
+        await supabase
+          .from("analyses")
+          .select("result")
+          .eq("upload_id", previousUpload.id)
+          .eq("status", "completed")
+          .maybeSingle();
+
+      if (previousAnalysisError) {
+        throw previousAnalysisError;
+      }
+
+      previousAnalysisText = previousAnalysis?.result ?? null;
+
+      if (!previousAnalysisText) {
+        throw new Error(
+          "The previous attempt does not have completed coaching feedback yet.",
+        );
+      }
+    }
   }
 
   const fileName = safeFileName(video.fileName);
@@ -30,16 +93,20 @@ export async function uploadNewClimbingAttempt({ userId, video }) {
     throw storageError;
   }
 
-  const { data: session, error: sessionError } = await supabase
-    .from("coaching_sessions")
-    .insert({
-      user_id: userId,
-    })
-    .select("id")
-    .single();
+  if (!activeSessionId) {
+    const { data: session, error: sessionError } = await supabase
+      .from("coaching_sessions")
+      .insert({
+        user_id: userId,
+      })
+      .select("id")
+      .single();
 
-  if (sessionError) {
-    throw sessionError;
+    if (sessionError) {
+      throw sessionError;
+    }
+
+    activeSessionId = session.id;
   }
 
   const { data: upload, error: uploadError } = await supabase
@@ -48,8 +115,8 @@ export async function uploadNewClimbingAttempt({ userId, video }) {
       user_id: userId,
       media_path: filePath,
       media_type: "video",
-      coaching_session_id: session.id,
-      attempt_number: 1,
+      coaching_session_id: activeSessionId,
+      attempt_number: attemptNumber,
     })
     .select("id")
     .single();
@@ -73,9 +140,9 @@ export async function uploadNewClimbingAttempt({ userId, video }) {
 
   const { error: chatError } = await supabase.from("chat_history").insert({
     user_id: userId,
-    coaching_session_id: session.id,
+    coaching_session_id: activeSessionId,
     upload_id: upload.id,
-    message: "Attempt 1",
+    message: `Attempt ${attemptNumber}`,
     sender: "User",
   });
 
@@ -92,9 +159,11 @@ export async function uploadNewClimbingAttempt({ userId, video }) {
   }
 
   return {
-    sessionId: session.id,
+    sessionId: activeSessionId,
     uploadId: upload.id,
     analysisId: analysis.id,
+    attemptNumber,
+    previousAnalysisText,
     filePath,
     signedUrl: signedUrlData.signedUrl,
   };

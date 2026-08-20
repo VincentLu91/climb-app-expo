@@ -23,20 +23,23 @@ async function getPreviousSessionFocus(userId) {
   return data?.next_session_focus ?? null;
 }
 
-export async function analyzeFirstAttempt({
+export async function analyzeClimbingAttempt({
   userId,
   sessionId,
   analysisId,
   signedUrl,
+  attemptNumber,
+  previousAnalysisText = null,
 }) {
-  const previousSessionFocus = await getPreviousSessionFocus(userId);
+  const previousSessionFocus =
+    attemptNumber === 1 ? await getPreviousSessionFocus(userId) : null;
 
   const analyzeResponse = await apiFetch("/api/analyze", {
     method: "POST",
     body: JSON.stringify({
       videoUrl: signedUrl,
-      attemptNumber: 1,
-      previousAnalysisText: null,
+      attemptNumber,
+      previousAnalysisText,
       previousSessionFocus,
     }),
   });

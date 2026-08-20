@@ -1,7 +1,8 @@
-import { useLocalSearchParams } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -90,6 +91,28 @@ export default function SessionScreen() {
       )}
 
       <Text style={styles.sectionTitle}>Coaching state</Text>
+      {!session.ended_at ? (
+        <>
+          <Pressable
+            style={styles.button}
+            onPress={() =>
+              router.push({
+                pathname: "/capture",
+                params: { sessionId },
+              })
+            }
+          >
+            <Text style={styles.buttonText}>Next attempt on this problem</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.button}
+            onPress={() => router.push("/capture")}
+          >
+            <Text style={styles.buttonText}>Start a different problem</Text>
+          </Pressable>
+        </>
+      ) : null}
 
       {progressState ? (
         <>
@@ -144,5 +167,16 @@ const styles = StyleSheet.create({
   },
   sender: {
     fontWeight: "700",
+  },
+  button: {
+    padding: 14,
+    backgroundColor: "#111111",
+    borderRadius: 8,
+    alignItems: "center",
+    marginTop: 8,
+  },
+  buttonText: {
+    color: "#ffffff",
+    fontWeight: "600",
   },
 });

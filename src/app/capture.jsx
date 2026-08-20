@@ -4,11 +4,11 @@ import { useVideoPlayer, VideoView } from "expo-video";
 import { useRef, useState } from "react";
 import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 
 import { useAuth } from "../context/AuthContext";
-import { analyzeFirstAttempt } from "../lib/coaching";
-import { uploadNewClimbingAttempt } from "../lib/media";
+import { analyzeClimbingAttempt } from "../lib/coaching";
+import { uploadClimbingAttempt } from "../lib/media";
 
 function VideoPreview({ uri }) {
   const player = useVideoPlayer({ uri });
@@ -39,6 +39,12 @@ export default function CaptureScreen() {
   const [recording, setRecording] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [uploading, setUploading] = useState(false);
+
+  const params = useLocalSearchParams();
+
+  const sessionId = Array.isArray(params.sessionId)
+    ? params.sessionId[0]
+    : params.sessionId ?? null;
 
   async function pickVideo() {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -90,16 +96,19 @@ export default function CaptureScreen() {
     let uploadResult = null;
 
     try {
-      uploadResult = await uploadNewClimbingAttempt({
+      uploadResult = await uploadClimbingAttempt({
         userId: user.id,
         video: selectedVideo,
+        sessionId,
       });
 
-      const analysisResult = await analyzeFirstAttempt({
+      const analysisResult = await analyzeClimbingAttempt({
         userId: user.id,
         sessionId: uploadResult.sessionId,
         analysisId: uploadResult.analysisId,
         signedUrl: uploadResult.signedUrl,
+        attemptNumber: uploadResult.attemptNumber,
+        previousAnalysisText: uploadResult.previousAnalysisText,
       });
 
       Alert.alert(
