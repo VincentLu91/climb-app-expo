@@ -31,3 +31,35 @@ export async function logOutRevenueCat() {
 
   return Purchases.logOut();
 }
+
+export async function getRevenueCatOfferings() {
+  configureRevenueCat();
+
+  return Purchases.getOfferings();
+}
+
+export async function getRevenueCatCustomerInfo() {
+  configureRevenueCat();
+
+  return Purchases.getCustomerInfo();
+}
+
+export function hasProEntitlement(customerInfo) {
+  return Boolean(customerInfo?.entitlements?.active?.pro);
+}
+
+export function subscribeToRevenueCatCustomerInfo(callback) {
+  configureRevenueCat();
+
+  Purchases.addCustomerInfoUpdateListener(callback);
+
+  return () => {
+    Purchases.removeCustomerInfoUpdateListener(callback);
+  };
+}
+
+export async function purchaseRevenueCatPackage(packageToPurchase) {
+  configureRevenueCat();
+
+  return Purchases.purchasePackage(packageToPurchase);
+}

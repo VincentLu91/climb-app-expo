@@ -1,6 +1,7 @@
 import { Stack } from "expo-router";
 
 import { AuthProvider, useAuth } from "../context/AuthContext";
+import { RevenueCatProvider } from "../context/RevenueCatContext";
 
 function AppNavigator() {
   const { user } = useAuth();
@@ -25,7 +26,9 @@ function AppNavigator() {
 export default function RootLayout() {
   return (
     <AuthProvider>
-      <AppNavigator />
+      <RevenueCatProvider>
+        <AppNavigator />
+      </RevenueCatProvider>
     </AuthProvider>
   );
 }
