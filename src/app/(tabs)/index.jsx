@@ -12,6 +12,14 @@ export default function HomeTab() {
 
       <Text>Pro entitlement: {isPro ? "active" : "inactive"}</Text>
 
+      {/*<Pressable onPress={() => router.push("/onboarding")}>
+        <Text>Open Onboarding</Text>
+      </Pressable>*/}
+
+      <Pressable onPress={() => router.push("/profile")}>
+        <Text>Open Profile</Text>
+      </Pressable>
+
       <Pressable onPress={() => router.push("/paywall")}>
         <Text>Open Paywall</Text>
       </Pressable>
