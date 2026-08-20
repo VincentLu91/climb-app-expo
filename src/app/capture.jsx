@@ -2,13 +2,15 @@ import { CameraView, useCameraPermissions } from "expo-camera";
 import * as ImagePicker from "expo-image-picker";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useRef, useState } from "react";
-import { Alert, Pressable, StyleSheet, Text, View } from "react-native";
+import { Alert, Image, Pressable, StyleSheet, Text, View } from "react-native";
 
 import { router, useLocalSearchParams } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { useAuth } from "../context/AuthContext";
-import { analyzeClimbingAttempt } from "../lib/coaching";
-import { uploadClimbingAttempt } from "../lib/media";
+import { analyzeClimbingAttempt, analyzeClimbingPhoto } from "../lib/coaching";
+
+import { uploadClimbingAttempt, uploadClimbingPhoto } from "../lib/media";
 
 function VideoPreview({ uri }) {
   const player = useVideoPlayer({ uri });
@@ -38,7 +40,9 @@ export default function CaptureScreen() {
   const [cameraOpen, setCameraOpen] = useState(false);
   const [recording, setRecording] = useState(false);
   const [selectedVideo, setSelectedVideo] = useState(null);
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [analyzingPhoto, setAnalyzingPhoto] = useState(false);
 
   const params = useLocalSearchParams();
 
@@ -65,6 +69,71 @@ export default function CaptureScreen() {
 
     if (!result.canceled) {
       setSelectedVideo(result.assets[0]);
+    }
+  }
+
+  async function pickPhoto() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      Alert.alert(
+        "Permission required",
+        "Media library access is required to choose a wall photo.",
+      );
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setSelectedPhoto(result.assets[0]);
+    }
+  }
+
+  async function analyzePhoto() {
+    if (!selectedPhoto?.uri || analyzingPhoto) {
+      return;
+    }
+
+    setAnalyzingPhoto(true);
+
+    try {
+      const uploadResult = await uploadClimbingPhoto({
+        userId: user.id,
+        photo: selectedPhoto,
+        sessionId,
+      });
+
+      const analysisResult = await analyzeClimbingPhoto({
+        userId: user.id,
+        sessionId,
+        analysisId: uploadResult.analysisId,
+        imageUrl: uploadResult.signedUrl,
+      });
+
+      Alert.alert(
+        "Photo analysis complete",
+        analysisResult.analysisText ?? "Your wall photo was analyzed.",
+      );
+    } catch (error) {
+      if (error.code === "INSUFFICIENT_CREDITS") {
+        Alert.alert(
+          "More credits needed",
+          "You do not have enough credits to analyze this photo.",
+        );
+        return;
+      }
+
+      Alert.alert(
+        "Photo analysis failed",
+        error?.message ?? "Could not analyze wall photo.",
+      );
+    } finally {
+      setAnalyzingPhoto(false);
     }
   }
 
@@ -231,8 +300,19 @@ export default function CaptureScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       <Text style={styles.title}>Climbing Attempt</Text>
+
+      <Pressable
+        style={styles.button}
+        onPress={() =>
+          sessionId ? router.replace(`/session/${sessionId}`) : router.back()
+        }
+      >
+        <Text style={styles.buttonText}>
+          {sessionId ? "Back to session" : "Back"}
+        </Text>
+      </Pressable>
 
       <Pressable style={styles.button} onPress={openCamera}>
         <Text style={styles.buttonText}>Record video</Text>
@@ -241,6 +321,32 @@ export default function CaptureScreen() {
       <Pressable style={styles.button} onPress={pickVideo}>
         <Text style={styles.buttonText}>Choose from gallery</Text>
       </Pressable>
+
+      <Pressable style={styles.button} onPress={pickPhoto}>
+        <Text style={styles.buttonText}>Choose wall photo</Text>
+      </Pressable>
+
+      {selectedPhoto?.uri ? (
+        <>
+          <Text>Wall photo ready</Text>
+
+          <Image
+            source={{ uri: selectedPhoto.uri }}
+            style={styles.photoPreview}
+            resizeMode="contain"
+          />
+
+          <Pressable
+            style={styles.button}
+            onPress={analyzePhoto}
+            disabled={analyzingPhoto}
+          >
+            <Text style={styles.buttonText}>
+              {analyzingPhoto ? "Analyzing photo..." : "Analyze wall photo"}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
 
       {selectedVideo?.uri ? (
         <>
@@ -261,7 +367,7 @@ export default function CaptureScreen() {
       ) : (
         <Text>No video selected.</Text>
       )}
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -301,5 +407,9 @@ const styles = StyleSheet.create({
   },
   previewContainer: {
     gap: 12,
+  },
+  photoPreview: {
+    width: "100%",
+    height: 300,
   },
 });

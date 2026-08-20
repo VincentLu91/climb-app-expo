@@ -6,11 +6,13 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from "react-native";
 
 import { useAuth } from "../../context/AuthContext";
-import { getSessionDetail } from "../../lib/sessions";
+import { sendSessionChatMessage } from "../../lib/chat";
+import { finishSession, getSessionDetail } from "../../lib/sessions";
 
 export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams();
@@ -19,6 +21,9 @@ export default function SessionScreen() {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
+  const [chatText, setChatText] = useState("");
+  const [sendingChat, setSendingChat] = useState(false);
+  const [finishingSession, setFinishingSession] = useState(false);
 
   useEffect(() => {
     async function loadSession() {
@@ -38,6 +43,65 @@ export default function SessionScreen() {
 
     loadSession();
   }, [user?.id, sessionId]);
+
+  async function sendChat() {
+    const text = chatText.trim();
+
+    if (!text || sendingChat || !detail?.session?.id || !user?.id) {
+      return;
+    }
+
+    setSendingChat(true);
+    setErrorMessage("");
+
+    try {
+      const { userMessage, coachMessage } = await sendSessionChatMessage({
+        userId: user.id,
+        sessionId: detail.session.id,
+        message: text,
+      });
+
+      setDetail((current) => ({
+        ...current,
+        messages: [...(current?.messages ?? []), userMessage, coachMessage],
+      }));
+
+      setChatText("");
+    } catch (error) {
+      console.error("Failed to send chat message:", error);
+      setErrorMessage(error.message || "Failed to send message.");
+    } finally {
+      setSendingChat(false);
+    }
+  }
+
+  async function finishCurrentSession() {
+    if (finishingSession || !session?.id) {
+      return;
+    }
+
+    setFinishingSession(true);
+    setErrorMessage("");
+
+    try {
+      const result = await finishSession(session.id);
+
+      setDetail((current) => ({
+        ...current,
+        session: {
+          ...current.session,
+          ended_at: new Date().toISOString(),
+          session_summary: result.sessionSummary,
+          next_session_focus: result.nextSessionFocus,
+        },
+      }));
+    } catch (error) {
+      console.error("Failed to finish session:", error);
+      setErrorMessage(error.message || "Failed to finish session.");
+    } finally {
+      setFinishingSession(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -107,9 +171,31 @@ export default function SessionScreen() {
 
           <Pressable
             style={styles.button}
+            onPress={() =>
+              router.push({
+                pathname: "/capture",
+                params: { sessionId: session.id },
+              })
+            }
+          >
+            <Text style={styles.buttonText}>Add wall/problem photo</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.button}
             onPress={() => router.push("/capture")}
           >
             <Text style={styles.buttonText}>Start a different problem</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.button}
+            onPress={finishCurrentSession}
+            disabled={finishingSession}
+          >
+            <Text style={styles.buttonText}>
+              {finishingSession ? "Finishing session..." : "Finish Session"}
+            </Text>
           </Pressable>
         </>
       ) : null}
@@ -139,6 +225,28 @@ export default function SessionScreen() {
           </View>
         ))
       )}
+
+      {!session.ended_at ? (
+        <>
+          <TextInput
+            value={chatText}
+            onChangeText={setChatText}
+            placeholder="Ask your coach..."
+            multiline
+            style={styles.chatInput}
+          />
+
+          <Pressable
+            style={styles.button}
+            onPress={sendChat}
+            disabled={sendingChat || !chatText.trim()}
+          >
+            <Text style={styles.buttonText}>
+              {sendingChat ? "Coach thinking..." : "Send"}
+            </Text>
+          </Pressable>
+        </>
+      ) : null}
     </ScrollView>
   );
 }
@@ -178,5 +286,14 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#ffffff",
     fontWeight: "600",
+  },
+  chatInput: {
+    borderWidth: 1,
+    borderColor: "#cccccc",
+    borderRadius: 8,
+    padding: 12,
+    minHeight: 80,
+    textAlignVertical: "top",
+    marginTop: 8,
   },
 });

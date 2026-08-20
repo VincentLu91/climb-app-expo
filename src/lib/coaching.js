@@ -134,3 +134,68 @@ export async function analyzeClimbingAttempt({
     progressUpdated: progressResponse.ok,
   };
 }
+
+export async function analyzeClimbingPhoto({
+  userId,
+  sessionId,
+  analysisId,
+  imageUrl,
+  prompt = null,
+}) {
+  const response = await apiFetch("/api/analyze-image", {
+    method: "POST",
+    body: JSON.stringify({
+      imageUrl,
+      prompt,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(data.error ?? "Could not analyze climbing photo.");
+
+    error.code = data.code;
+    throw error;
+  }
+
+  const analysisText = data.output;
+
+  if (!analysisText) {
+    throw new Error("Image analysis returned no coaching feedback.");
+  }
+
+  const { error: saveAnalysisError } = await supabase
+    .from("analyses")
+    .update({
+      status: "completed",
+      result: analysisText,
+      model_provider: "fal.ai",
+      model_name: "google/gemini-2.5-flash",
+      completed_at: new Date().toISOString(),
+    })
+    .eq("id", analysisId);
+
+  if (saveAnalysisError) {
+    throw saveAnalysisError;
+  }
+
+  if (sessionId) {
+    const { error: coachMessageError } = await supabase
+      .from("chat_history")
+      .insert({
+        user_id: userId,
+        coaching_session_id: sessionId,
+        message: analysisText,
+        sender: "ChatGPT",
+      });
+
+    if (coachMessageError) {
+      throw coachMessageError;
+    }
+  }
+
+  return {
+    analysisText,
+  };
+}

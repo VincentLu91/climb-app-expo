@@ -168,3 +168,73 @@ export async function uploadClimbingAttempt({
     signedUrl: signedUrlData.signedUrl,
   };
 }
+
+export async function uploadClimbingPhoto({ userId, photo, sessionId = null }) {
+  if (!userId) {
+    throw new Error("You must be logged in.");
+  }
+
+  if (!photo?.uri) {
+    throw new Error("Choose a photo first.");
+  }
+
+  const fileName = safeFileName(photo.fileName || "climbing-wall.jpg");
+  const filePath = `${userId}/${Date.now()}-${fileName}`;
+
+  const response = await fetch(photo.uri);
+  const fileBuffer = await response.arrayBuffer();
+
+  const { error: storageError } = await supabase.storage
+    .from("climbing-media")
+    .upload(filePath, fileBuffer, {
+      contentType: photo.mimeType || "image/jpeg",
+      upsert: false,
+    });
+
+  if (storageError) {
+    throw storageError;
+  }
+
+  const { data: upload, error: uploadError } = await supabase
+    .from("uploads")
+    .insert({
+      user_id: userId,
+      media_path: filePath,
+      media_type: "image",
+      coaching_session_id: sessionId,
+    })
+    .select("id")
+    .single();
+
+  if (uploadError) {
+    throw uploadError;
+  }
+
+  const { data: analysis, error: analysisError } = await supabase
+    .from("analyses")
+    .insert({
+      upload_id: upload.id,
+      status: "pending",
+    })
+    .select("id")
+    .single();
+
+  if (analysisError) {
+    throw analysisError;
+  }
+
+  const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+    .from("climbing-media")
+    .createSignedUrl(filePath, 3600);
+
+  if (signedUrlError) {
+    throw signedUrlError;
+  }
+
+  return {
+    uploadId: upload.id,
+    analysisId: analysis.id,
+    filePath,
+    signedUrl: signedUrlData.signedUrl,
+  };
+}

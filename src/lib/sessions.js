@@ -1,3 +1,4 @@
+import { apiFetch } from "./api";
 import { supabase } from "./supabase";
 
 export async function getSessions(userId) {
@@ -90,4 +91,28 @@ export async function getSessionDetail(userId, sessionId) {
     progressState,
     messages: messages ?? [],
   };
+}
+
+export async function finishSession(sessionId) {
+  if (!sessionId) {
+    throw new Error("Missing coaching session.");
+  }
+
+  const response = await apiFetch("/api/finish-session", {
+    method: "POST",
+    body: JSON.stringify({
+      sessionId,
+    }),
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    const error = new Error(data.error ?? "Could not finish coaching session.");
+
+    error.code = data.code;
+    throw error;
+  }
+
+  return data;
 }
