@@ -18,6 +18,7 @@ function AppNavigator() {
 
       <Stack.Protected guard={!!user}>
         <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="paywall" />
       </Stack.Protected>
     </Stack>
   );
