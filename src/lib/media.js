@@ -8,6 +8,7 @@ export async function uploadClimbingAttempt({
   userId,
   video,
   sessionId = null,
+  messageText = "",
 }) {
   if (!userId) {
     throw new Error("You must be logged in.");
@@ -67,12 +68,6 @@ export async function uploadClimbingAttempt({
       }
 
       previousAnalysisText = previousAnalysis?.result ?? null;
-
-      if (!previousAnalysisText) {
-        throw new Error(
-          "The previous attempt does not have completed coaching feedback yet.",
-        );
-      }
     }
   }
 
@@ -142,7 +137,7 @@ export async function uploadClimbingAttempt({
     user_id: userId,
     coaching_session_id: activeSessionId,
     upload_id: upload.id,
-    message: `Attempt ${attemptNumber}`,
+    message: messageText.trim() || `Attempt ${attemptNumber}`,
     sender: "User",
   });
 
@@ -169,7 +164,12 @@ export async function uploadClimbingAttempt({
   };
 }
 
-export async function uploadClimbingPhoto({ userId, photo, sessionId = null }) {
+export async function uploadClimbingPhoto({
+  userId,
+  photo,
+  sessionId = null,
+  messageText = "",
+}) {
   if (!userId) {
     throw new Error("You must be logged in.");
   }
@@ -221,6 +221,20 @@ export async function uploadClimbingPhoto({ userId, photo, sessionId = null }) {
 
   if (analysisError) {
     throw analysisError;
+  }
+
+  if (sessionId) {
+    const { error: chatError } = await supabase.from("chat_history").insert({
+      user_id: userId,
+      coaching_session_id: sessionId,
+      upload_id: upload.id,
+      message: messageText.trim() || "Wall/problem photo",
+      sender: "User",
+    });
+
+    if (chatError) {
+      throw chatError;
+    }
   }
 
   const { data: signedUrlData, error: signedUrlError } = await supabase.storage

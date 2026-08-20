@@ -1,7 +1,10 @@
+import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import { useVideoPlayer, VideoView } from "expo-video";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -12,7 +15,25 @@ import {
 
 import { useAuth } from "../../context/AuthContext";
 import { sendSessionChatMessage } from "../../lib/chat";
+import {
+  analyzeClimbingAttempt,
+  analyzeClimbingPhoto,
+} from "../../lib/coaching";
+import { uploadClimbingAttempt, uploadClimbingPhoto } from "../../lib/media";
 import { finishSession, getSessionDetail } from "../../lib/sessions";
+
+function MessageVideo({ uri }) {
+  const player = useVideoPlayer({ uri });
+
+  return (
+    <VideoView
+      player={player}
+      style={styles.messageMedia}
+      nativeControls
+      contentFit="contain"
+    />
+  );
+}
 
 export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams();
@@ -22,6 +43,7 @@ export default function SessionScreen() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [chatText, setChatText] = useState("");
+  const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [sendingChat, setSendingChat] = useState(false);
   const [finishingSession, setFinishingSession] = useState(false);
 
@@ -44,10 +66,34 @@ export default function SessionScreen() {
     loadSession();
   }, [user?.id, sessionId]);
 
+  async function pickAttachment() {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+
+    if (!permission.granted) {
+      return;
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images", "videos"],
+      allowsEditing: false,
+      quality: 1,
+    });
+
+    if (!result.canceled) {
+      setSelectedAttachment(result.assets[0]);
+    }
+  }
+
   async function sendChat() {
     const text = chatText.trim();
+    const activeSessionId = detail?.session?.id;
 
-    if (!text || sendingChat || !detail?.session?.id || !user?.id) {
+    if (
+      sendingChat ||
+      !activeSessionId ||
+      !user?.id ||
+      (!text && !selectedAttachment)
+    ) {
       return;
     }
 
@@ -55,9 +101,58 @@ export default function SessionScreen() {
     setErrorMessage("");
 
     try {
+      if (selectedAttachment) {
+        const isVideo =
+          selectedAttachment.type === "video" ||
+          selectedAttachment.mimeType?.startsWith("video/");
+
+        if (isVideo) {
+          const uploadResult = await uploadClimbingAttempt({
+            userId: user.id,
+            video: selectedAttachment,
+            sessionId: activeSessionId,
+            messageText: text,
+          });
+
+          await analyzeClimbingAttempt({
+            userId: user.id,
+            sessionId: uploadResult.sessionId,
+            analysisId: uploadResult.analysisId,
+            signedUrl: uploadResult.signedUrl,
+            attemptNumber: uploadResult.attemptNumber,
+            previousAnalysisText: uploadResult.previousAnalysisText,
+          });
+        } else {
+          const uploadResult = await uploadClimbingPhoto({
+            userId: user.id,
+            photo: selectedAttachment,
+            sessionId: activeSessionId,
+            messageText: text,
+          });
+
+          await analyzeClimbingPhoto({
+            userId: user.id,
+            sessionId: activeSessionId,
+            analysisId: uploadResult.analysisId,
+            imageUrl: uploadResult.signedUrl,
+            prompt: text || null,
+          });
+        }
+
+        const refreshedDetail = await getSessionDetail(
+          user.id,
+          activeSessionId,
+        );
+
+        setDetail(refreshedDetail);
+        setSelectedAttachment(null);
+        setChatText("");
+        return;
+      }
+
       const { userMessage, coachMessage } = await sendSessionChatMessage({
         userId: user.id,
-        sessionId: detail.session.id,
+        sessionId: activeSessionId,
         message: text,
       });
 
@@ -155,50 +250,6 @@ export default function SessionScreen() {
       )}
 
       <Text style={styles.sectionTitle}>Coaching state</Text>
-      {!session.ended_at ? (
-        <>
-          <Pressable
-            style={styles.button}
-            onPress={() =>
-              router.push({
-                pathname: "/capture",
-                params: { sessionId },
-              })
-            }
-          >
-            <Text style={styles.buttonText}>Next attempt on this problem</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.button}
-            onPress={() =>
-              router.push({
-                pathname: "/capture",
-                params: { sessionId: session.id },
-              })
-            }
-          >
-            <Text style={styles.buttonText}>Add wall/problem photo</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.button}
-            onPress={() => router.push("/capture")}
-          >
-            <Text style={styles.buttonText}>Start a different problem</Text>
-          </Pressable>
-
-          <Pressable
-            style={styles.button}
-            onPress={finishCurrentSession}
-            disabled={finishingSession}
-          >
-            <Text style={styles.buttonText}>
-              {finishingSession ? "Finishing session..." : "Finish Session"}
-            </Text>
-          </Pressable>
-        </>
-      ) : null}
 
       {progressState ? (
         <>
@@ -221,28 +272,96 @@ export default function SessionScreen() {
         messages.map((message) => (
           <View key={message.id} style={styles.message}>
             <Text style={styles.sender}>{message.sender}</Text>
-            <Text>{message.message}</Text>
+
+            {message.attachment?.media_type === "video" &&
+            message.attachment?.attempt_number ? (
+              <Text style={styles.attemptLabel}>
+                Attempt {message.attachment.attempt_number}
+              </Text>
+            ) : null}
+
+            {message.attachment?.signedUrl ? (
+              message.attachment.media_type === "video" ? (
+                <MessageVideo uri={message.attachment.signedUrl} />
+              ) : (
+                <Image
+                  source={{ uri: message.attachment.signedUrl }}
+                  style={styles.messageMedia}
+                  resizeMode="contain"
+                />
+              )
+            ) : null}
+
+            {message.message &&
+            message.message !==
+              `Attempt ${message.attachment?.attempt_number}` ? (
+              <Text>{message.message}</Text>
+            ) : null}
           </View>
         ))
       )}
 
       {!session.ended_at ? (
         <>
-          <TextInput
-            value={chatText}
-            onChangeText={setChatText}
-            placeholder="Ask your coach..."
-            multiline
-            style={styles.chatInput}
-          />
+          {selectedAttachment ? (
+            <View style={styles.attachmentPreview}>
+              <Text>
+                {selectedAttachment.fileName ??
+                  (selectedAttachment.type === "video"
+                    ? "Video selected"
+                    : "Photo selected")}
+              </Text>
+
+              <Pressable onPress={() => setSelectedAttachment(null)}>
+                <Text style={styles.removeAttachment}>Remove</Text>
+              </Pressable>
+            </View>
+          ) : null}
+
+          <View style={styles.composerRow}>
+            <Pressable
+              style={styles.attachButton}
+              onPress={pickAttachment}
+              disabled={sendingChat}
+            >
+              <Text style={styles.attachButtonText}>+</Text>
+            </Pressable>
+
+            <TextInput
+              value={chatText}
+              onChangeText={setChatText}
+              placeholder="Ask your coach..."
+              multiline
+              style={styles.chatInput}
+            />
+
+            <Pressable
+              style={styles.sendButton}
+              onPress={sendChat}
+              disabled={
+                sendingChat || (!chatText.trim() && !selectedAttachment)
+              }
+            >
+              <Text style={styles.buttonText}>
+                {sendingChat ? "..." : "Send"}
+              </Text>
+            </Pressable>
+          </View>
 
           <Pressable
             style={styles.button}
-            onPress={sendChat}
-            disabled={sendingChat || !chatText.trim()}
+            onPress={() => router.push("/capture")}
+          >
+            <Text style={styles.buttonText}>Start a different problem</Text>
+          </Pressable>
+
+          <Pressable
+            style={styles.button}
+            onPress={finishCurrentSession}
+            disabled={finishingSession}
           >
             <Text style={styles.buttonText}>
-              {sendingChat ? "Coach thinking..." : "Send"}
+              {finishingSession ? "Finishing session..." : "Finish Session"}
             </Text>
           </Pressable>
         </>
@@ -288,12 +407,63 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   chatInput: {
+    flex: 1,
     borderWidth: 1,
     borderColor: "#cccccc",
     borderRadius: 8,
     padding: 12,
-    minHeight: 80,
+    minHeight: 48,
+    maxHeight: 120,
     textAlignVertical: "top",
+  },
+  composerRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    gap: 8,
     marginTop: 8,
+  },
+  attachButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: "#cccccc",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachButtonText: {
+    fontSize: 28,
+    lineHeight: 30,
+  },
+  sendButton: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    backgroundColor: "#111111",
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachmentPreview: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 10,
+    borderWidth: 1,
+    borderColor: "#cccccc",
+    borderRadius: 8,
+    marginTop: 8,
+  },
+  removeAttachment: {
+    fontWeight: "600",
+  },
+  messageMedia: {
+    width: "100%",
+    height: 280,
+    borderRadius: 8,
+    marginVertical: 8,
+  },
+  attemptLabel: {
+    fontWeight: "600",
+    marginTop: 4,
   },
 });

@@ -73,9 +73,22 @@ export async function getSessionDetail(userId, sessionId) {
     throw progressError;
   }
 
-  const { data: messages, error: chatError } = await supabase
+  const { data: chatHistory, error: chatError } = await supabase
     .from("chat_history")
-    .select("id, message, sender, upload_id, created_at")
+    .select(
+      `
+    id,
+    message,
+    sender,
+    upload_id,
+    created_at,
+    uploads (
+      media_path,
+      media_type,
+      attempt_number
+    )
+  `,
+    )
     .eq("user_id", userId)
     .eq("coaching_session_id", sessionId)
     .order("created_at", { ascending: true });
@@ -84,12 +97,45 @@ export async function getSessionDetail(userId, sessionId) {
     throw chatError;
   }
 
+  const messages = await Promise.all(
+    (chatHistory ?? []).map(async (item) => {
+      let attachment = null;
+
+      if (item.uploads?.media_path) {
+        const { data: signedUrlData, error: signedUrlError } =
+          await supabase.storage
+            .from("climbing-media")
+            .createSignedUrl(item.uploads.media_path, 3600);
+
+        if (signedUrlError) {
+          throw signedUrlError;
+        }
+
+        attachment = {
+          media_path: item.uploads.media_path,
+          media_type: item.uploads.media_type,
+          attempt_number: item.uploads.attempt_number,
+          signedUrl: signedUrlData?.signedUrl ?? null,
+        };
+      }
+
+      return {
+        id: item.id,
+        message: item.message,
+        sender: item.sender,
+        upload_id: item.upload_id,
+        created_at: item.created_at,
+        attachment,
+      };
+    }),
+  );
+
   return {
     session,
     latestUpload,
     latestAnalysis,
     progressState,
-    messages: messages ?? [],
+    messages,
   };
 }
 
