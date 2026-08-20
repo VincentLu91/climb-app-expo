@@ -20,6 +20,10 @@ export default function HomeTab() {
         <Text>Open Profile</Text>
       </Pressable>
 
+      <Pressable onPress={() => router.push("/capture")}>
+        <Text>Start Climbing Attempt</Text>
+      </Pressable>
+
       <Pressable onPress={() => router.push("/paywall")}>
         <Text>Open Paywall</Text>
       </Pressable>
