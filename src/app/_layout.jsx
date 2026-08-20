@@ -21,6 +21,7 @@ function AppNavigator() {
         <Stack.Screen name="onboarding" />
         <Stack.Screen name="profile" />
         <Stack.Screen name="paywall" />
+        <Stack.Screen name="session/[sessionId]" />
       </Stack.Protected>
     </Stack>
   );
