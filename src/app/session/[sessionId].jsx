@@ -14,6 +14,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "../../context/AuthContext";
 import { apiFetch } from "../../lib/api";
@@ -23,6 +24,7 @@ import {
   analyzeClimbingPhoto,
 } from "../../lib/coaching";
 import { uploadClimbingAttempt, uploadClimbingPhoto } from "../../lib/media";
+import { capturePostHogEvent } from "../../lib/posthog";
 import { finishSession, getSessionDetail } from "../../lib/sessions";
 
 function MessageVideo({ uri }) {
@@ -41,6 +43,7 @@ function MessageVideo({ uri }) {
 export default function SessionScreen() {
   const { sessionId } = useLocalSearchParams();
   const { user } = useAuth();
+  const insets = useSafeAreaInsets();
 
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -211,6 +214,10 @@ export default function SessionScreen() {
 
       setShareClipUrl(result.signedUrl);
 
+      capturePostHogEvent("share_clip_generated", {
+        session_id: activeSessionId,
+      });
+
       console.log("Share clip rendered:", result);
     } catch (error) {
       console.error("Failed to render share clip:", error);
@@ -248,6 +255,10 @@ export default function SessionScreen() {
       await Sharing.shareAsync(downloadedFile.uri, {
         mimeType: "video/mp4",
         dialogTitle: "Share climbing clip",
+      });
+
+      capturePostHogEvent("share_clip_native_share_invoked", {
+        session_id: detail?.session?.id,
       });
     } catch (error) {
       console.error("Failed to share clip:", error);
@@ -305,7 +316,16 @@ export default function SessionScreen() {
     detail;
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
+    <ScrollView
+      contentContainerStyle={[
+        styles.container,
+        { paddingTop: insets.top + 12 },
+      ]}
+    >
+      <Pressable onPress={() => router.replace("/history")}>
+        <Text style={styles.backButton}>← History</Text>
+      </Pressable>
+
       <Text style={styles.title}>Climbing Session</Text>
 
       <Text>{new Date(session.started_at).toLocaleString()}</Text>
@@ -588,5 +608,9 @@ const styles = StyleSheet.create({
   attemptLabel: {
     fontWeight: "600",
     marginTop: 4,
+  },
+  backButton: {
+    fontSize: 18,
+    marginBottom: 12,
   },
 });

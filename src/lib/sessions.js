@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { capturePostHogEvent } from "./posthog";
 import { supabase } from "./supabase";
 
 export async function getSessions(userId) {
@@ -159,6 +160,10 @@ export async function finishSession(sessionId) {
     error.code = data.code;
     throw error;
   }
+
+  capturePostHogEvent("climbing_session_finished", {
+    session_id: sessionId,
+  });
 
   return data;
 }

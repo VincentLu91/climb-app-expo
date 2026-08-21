@@ -1,3 +1,4 @@
+import { capturePostHogEvent } from "./posthog";
 import { supabase } from "./supabase";
 
 function safeFileName(name) {
@@ -21,6 +22,7 @@ export async function uploadClimbingAttempt({
   let activeSessionId = sessionId;
   let attemptNumber = 1;
   let previousAnalysisText = null;
+  let createdNewSession = false;
 
   if (activeSessionId) {
     const { data: session, error: sessionError } = await supabase
@@ -102,6 +104,7 @@ export async function uploadClimbingAttempt({
     }
 
     activeSessionId = session.id;
+    createdNewSession = true;
   }
 
   const { data: upload, error: uploadError } = await supabase
@@ -151,6 +154,12 @@ export async function uploadClimbingAttempt({
 
   if (signedUrlError) {
     throw signedUrlError;
+  }
+
+  if (createdNewSession) {
+    capturePostHogEvent("climbing_session_started", {
+      session_id: activeSessionId,
+    });
   }
 
   return {

@@ -1,4 +1,5 @@
 import { apiFetch } from "./api";
+import { capturePostHogEvent } from "./posthog";
 import { supabase } from "./supabase";
 
 function sleep(ms) {
@@ -129,6 +130,12 @@ export async function analyzeClimbingAttempt({
     console.error("Progress update failed:", progressData);
   }
 
+  capturePostHogEvent("climbing_attempt_analyzed", {
+    session_id: sessionId,
+    analysis_id: analysisId,
+    attempt_number: attemptNumber,
+  });
+
   return {
     analysisText,
     progressUpdated: progressResponse.ok,
@@ -194,6 +201,11 @@ export async function analyzeClimbingPhoto({
       throw coachMessageError;
     }
   }
+
+  capturePostHogEvent("climbing_photo_analyzed", {
+    session_id: sessionId,
+    analysis_id: analysisId,
+  });
 
   return {
     analysisText,

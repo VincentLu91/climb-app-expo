@@ -30,3 +30,14 @@ export function identifyPostHogUser(user) {
 export function resetPostHogUser() {
   posthog.reset();
 }
+
+export function capturePostHogEvent(event, properties = {}) {
+  if (!event) {
+    return;
+  }
+
+  posthog.capture(event, {
+    platform: "mobile",
+    ...properties,
+  });
+}
