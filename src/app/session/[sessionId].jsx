@@ -1,5 +1,7 @@
+import { File, Paths } from "expo-file-system";
 import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
+import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
 import { useEffect, useState } from "react";
 import {
@@ -14,6 +16,7 @@ import {
 } from "react-native";
 
 import { useAuth } from "../../context/AuthContext";
+import { apiFetch } from "../../lib/api";
 import { sendSessionChatMessage } from "../../lib/chat";
 import {
   analyzeClimbingAttempt,
@@ -46,6 +49,9 @@ export default function SessionScreen() {
   const [selectedAttachment, setSelectedAttachment] = useState(null);
   const [sendingChat, setSendingChat] = useState(false);
   const [finishingSession, setFinishingSession] = useState(false);
+  const [renderingShareClip, setRenderingShareClip] = useState(false);
+  const [shareClipUrl, setShareClipUrl] = useState("");
+  const [sharingClip, setSharingClip] = useState(false);
 
   useEffect(() => {
     async function loadSession() {
@@ -167,6 +173,87 @@ export default function SessionScreen() {
       setErrorMessage(error.message || "Failed to send message.");
     } finally {
       setSendingChat(false);
+    }
+  }
+
+  async function renderShareClip() {
+    const activeSessionId = detail?.session?.id;
+    const upload = detail?.latestUpload;
+    const analysis = detail?.latestAnalysis;
+
+    if (
+      renderingShareClip ||
+      !activeSessionId ||
+      !upload?.media_path ||
+      !analysis?.result
+    ) {
+      return;
+    }
+
+    setRenderingShareClip(true);
+    setErrorMessage("");
+
+    try {
+      const response = await apiFetch("/api/render-share-clip", {
+        method: "POST",
+        body: JSON.stringify({
+          sessionId: activeSessionId,
+          mediaPath: upload.media_path,
+          coachingCaption: analysis.result,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || "Failed to render share clip.");
+      }
+
+      setShareClipUrl(result.signedUrl);
+
+      console.log("Share clip rendered:", result);
+    } catch (error) {
+      console.error("Failed to render share clip:", error);
+      setErrorMessage(error.message || "Failed to render share clip.");
+    } finally {
+      setRenderingShareClip(false);
+    }
+  }
+
+  async function shareRenderedClip() {
+    if (!shareClipUrl || sharingClip) {
+      return;
+    }
+
+    setSharingClip(true);
+    setErrorMessage("");
+
+    try {
+      const sharingAvailable = await Sharing.isAvailableAsync();
+
+      if (!sharingAvailable) {
+        throw new Error("Sharing is not available on this device.");
+      }
+
+      const destination = new File(
+        Paths.cache,
+        `climb-share-${Date.now()}.mp4`,
+      );
+
+      const downloadedFile = await File.downloadFileAsync(
+        shareClipUrl,
+        destination,
+      );
+
+      await Sharing.shareAsync(downloadedFile.uri, {
+        mimeType: "video/mp4",
+        dialogTitle: "Share climbing clip",
+      });
+    } catch (error) {
+      console.error("Failed to share clip:", error);
+      setErrorMessage(error.message || "Failed to share clip.");
+    } finally {
+      setSharingClip(false);
     }
   }
 
@@ -364,6 +451,42 @@ export default function SessionScreen() {
               {finishingSession ? "Finishing session..." : "Finish Session"}
             </Text>
           </Pressable>
+        </>
+      ) : null}
+
+      {session.ended_at &&
+      latestUpload?.media_path &&
+      latestAnalysis?.result ? (
+        <>
+          <Pressable
+            style={styles.button}
+            onPress={renderShareClip}
+            disabled={renderingShareClip}
+          >
+            <Text style={styles.buttonText}>
+              {renderingShareClip
+                ? "Generating share clip..."
+                : "Generate Share Clip"}
+            </Text>
+          </Pressable>
+
+          {shareClipUrl ? (
+            <>
+              <Text style={styles.sectionTitle}>Share clip preview</Text>
+
+              <MessageVideo uri={shareClipUrl} />
+
+              <Pressable
+                style={styles.button}
+                onPress={shareRenderedClip}
+                disabled={sharingClip}
+              >
+                <Text style={styles.buttonText}>
+                  {sharingClip ? "Preparing share..." : "Share Clip"}
+                </Text>
+              </Pressable>
+            </>
+          ) : null}
         </>
       ) : null}
     </ScrollView>

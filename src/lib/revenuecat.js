@@ -29,6 +29,12 @@ export async function logInRevenueCat(userId) {
 export async function logOutRevenueCat() {
   configureRevenueCat();
 
+  const isAnonymous = await Purchases.isAnonymous();
+
+  if (isAnonymous) {
+    return null;
+  }
+
   return Purchases.logOut();
 }
 
