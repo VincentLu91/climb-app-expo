@@ -1,14 +1,20 @@
+import * as Linking from "expo-linking";
 import { useState } from "react";
 import {
   Alert,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 import { supabase } from "../lib/supabase";
+import { colors, fonts, radii, spacing } from "../theme/tokens";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -33,9 +39,14 @@ export default function LoginScreen() {
   async function handleSignUp() {
     setLoading(true);
 
+    const emailRedirectTo = Linking.createURL("auth/callback");
+
     const { error } = await supabase.auth.signUp({
       email,
       password,
+      options: {
+        emailRedirectTo,
+      },
     });
 
     setLoading(false);
@@ -49,74 +60,233 @@ export default function LoginScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Climb App</Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        autoCapitalize="none"
-        keyboardType="email-address"
-        value={email}
-        onChangeText={setEmail}
-      />
-
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        secureTextEntry
-        value={password}
-        onChangeText={setPassword}
-      />
-
-      <Pressable style={styles.button} onPress={handleLogin} disabled={loading}>
-        <Text style={styles.buttonText}>
-          {loading ? "Loading..." : "Log in"}
-        </Text>
-      </Pressable>
-
-      <Pressable
-        style={styles.secondaryButton}
-        onPress={handleSignUp}
-        disabled={loading}
+    <SafeAreaView style={styles.safeArea}>
+      <KeyboardAvoidingView
+        style={styles.flex}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
-        <Text>Sign up</Text>
-      </Pressable>
-    </View>
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <Text style={styles.wordmark}>
+            CLIMB<Text style={styles.wordmarkAccent}>/</Text>COACH
+          </Text>
+
+          <View style={styles.hero}>
+            <Text style={styles.eyebrow}>YOUR NEXT MOVE STARTS HERE</Text>
+
+            <Text style={styles.headline}>
+              Keep climbing.{"\n"}
+              <Text style={styles.headlineAccent}>Keep adapting.</Text>
+            </Text>
+
+            <Text style={styles.lede}>
+              Return to your coaching loop and pick up where your last attempt
+              left off.
+            </Text>
+          </View>
+
+          <View style={styles.panel}>
+            <Text style={styles.panelEyebrow}>WELCOME BACK</Text>
+            <Text style={styles.panelHeading}>Log in to your coach</Text>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Email</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="you@example.com"
+                placeholderTextColor={colors.muted}
+                autoCapitalize="none"
+                keyboardType="email-address"
+                value={email}
+                onChangeText={setEmail}
+              />
+            </View>
+
+            <View style={styles.field}>
+              <Text style={styles.fieldLabel}>Password</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="••••••••"
+                placeholderTextColor={colors.muted}
+                secureTextEntry
+                value={password}
+                onChangeText={setPassword}
+              />
+            </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.primaryButton,
+                pressed && styles.primaryButtonPressed,
+                loading && styles.primaryButtonDisabled,
+              ]}
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <Text style={styles.primaryButtonText}>
+                {loading ? "Loading..." : "Log in"}
+              </Text>
+            </Pressable>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.secondaryButton,
+                pressed && styles.secondaryButtonPressed,
+                loading && styles.secondaryButtonDisabled,
+              ]}
+              onPress={handleSignUp}
+              disabled={loading}
+            >
+              <Text style={styles.secondaryButtonText}>Sign up</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  safeArea: {
     flex: 1,
-    justifyContent: "center",
-    padding: 24,
-    gap: 12,
+    backgroundColor: colors.background,
   },
-  title: {
-    fontSize: 28,
-    fontWeight: "700",
-    marginBottom: 12,
+  flex: {
+    flex: 1,
+  },
+  container: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.xl,
+    paddingVertical: spacing.xxxl,
+    gap: spacing.xl,
+  },
+  wordmark: {
+    fontFamily: fonts.monoBold,
+    fontSize: 14,
+    letterSpacing: 1.5,
+    color: colors.foreground,
+  },
+  wordmarkAccent: {
+    color: colors.accent,
+  },
+  hero: {
+    gap: spacing.md,
+  },
+  eyebrow: {
+    fontFamily: fonts.monoBold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: colors.muted,
+    textTransform: "uppercase",
+  },
+  headline: {
+    fontFamily: Platform.select({
+      ios: "Arial",
+      android: "sans-serif",
+      default: "Arial",
+    }),
+    fontWeight: "600",
+    fontSize: 38,
+    lineHeight: 40,
+    letterSpacing: -2,
+    color: colors.foreground,
+  },
+  headlineAccent: {
+    color: colors.accent,
+  },
+  lede: {
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    lineHeight: 21,
+    color: colors.muted,
+  },
+  panel: {
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    paddingVertical: spacing.xl,
+    paddingHorizontal: spacing.xl,
+    gap: spacing.md,
+  },
+  panelEyebrow: {
+    fontFamily: fonts.monoBold,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    color: colors.muted,
+    textTransform: "uppercase",
+  },
+
+  panelHeading: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 20,
+    color: colors.foreground,
+    marginTop: -spacing.xs,
+    marginBottom: spacing.xs,
+  },
+  field: {
+    gap: spacing.xs,
+  },
+  fieldLabel: {
+    fontFamily: fonts.monoMedium,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: colors.muted,
+    textTransform: "uppercase",
   },
   input: {
     borderWidth: 1,
-    borderColor: "#cccccc",
-    borderRadius: 8,
-    padding: 14,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    fontFamily: fonts.sans,
+    fontSize: 15,
+    color: colors.foreground,
+    backgroundColor: colors.panelSoft,
   },
-  button: {
-    padding: 14,
-    borderRadius: 8,
-    backgroundColor: "#111111",
+  primaryButton: {
     alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.accent,
+    borderRadius: radii.md,
+    paddingVertical: spacing.lg,
+    minHeight: 52,
+    marginTop: spacing.sm,
   },
-  buttonText: {
-    color: "#ffffff",
-    fontWeight: "600",
+  primaryButtonPressed: {
+    opacity: 0.85,
+  },
+  primaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  primaryButtonText: {
+    fontFamily: fonts.sansBold,
+    fontSize: 16,
+    color: colors.accentInk,
   },
   secondaryButton: {
-    padding: 14,
-    borderRadius: 8,
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.md,
+    paddingVertical: spacing.md,
+    minHeight: 48,
+  },
+  secondaryButtonPressed: {
+    borderColor: colors.accent,
+  },
+  secondaryButtonDisabled: {
+    opacity: 0.5,
+  },
+  secondaryButtonText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 14,
+    color: colors.foreground,
   },
 });
