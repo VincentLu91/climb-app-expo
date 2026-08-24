@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
@@ -36,24 +36,27 @@ export default function HistoryTab() {
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
 
-  useEffect(() => {
-    async function loadSessions() {
-      if (!user?.id) {
-        return;
-      }
-
-      try {
-        const data = await getSessions(user.id);
-        setSessions(data);
-      } catch (error) {
-        setErrorMessage(error?.message ?? "Could not load sessions.");
-      } finally {
-        setLoading(false);
-      }
+  const loadSessions = useCallback(async () => {
+    if (!user?.id) {
+      return;
     }
 
-    loadSessions();
+    try {
+      const data = await getSessions(user.id);
+      setSessions(data);
+      setErrorMessage("");
+    } catch (error) {
+      setErrorMessage(error?.message ?? "Could not load sessions.");
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadSessions();
+    }, [loadSessions]),
+  );
 
   return (
     <SafeAreaView style={styles.safeArea} edges={["top"]}>

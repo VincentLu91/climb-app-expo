@@ -1,3 +1,4 @@
+import * as Linking from "expo-linking";
 import { router, useLocalSearchParams } from "expo-router";
 import { useEffect, useRef, useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
@@ -9,24 +10,52 @@ import { colors, fonts, spacing } from "../../theme/tokens";
 export default function AuthCallbackScreen() {
   const [errorMessage, setErrorMessage] = useState("");
   const { code } = useLocalSearchParams();
-  const processedCodeRef = useRef(null);
+  const callbackUrl = Linking.useLinkingURL();
+  const processedCallbackRef = useRef(null);
 
   useEffect(() => {
-    if (!code) {
+    if (!callbackUrl && !code) {
       return;
     }
 
-    if (processedCodeRef.current === code) {
+    const callbackKey = callbackUrl ?? code;
+
+    if (processedCallbackRef.current === callbackKey) {
       return;
     }
 
-    processedCodeRef.current = code;
+    processedCallbackRef.current = callbackKey;
 
     let isMounted = true;
 
     async function handleCallback() {
       try {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
+        let error;
+
+        if (callbackUrl?.includes("#")) {
+          const fragment = callbackUrl.split("#")[1];
+          const params = new URLSearchParams(fragment);
+          const accessToken = params.get("access_token");
+          const refreshToken = params.get("refresh_token");
+          const authError = params.get("error_description");
+
+          if (authError) {
+            throw new Error(authError);
+          }
+
+          if (!accessToken || !refreshToken) {
+            throw new Error("The confirmation link did not include a session.");
+          }
+
+          ({ error } = await supabase.auth.setSession({
+            access_token: accessToken,
+            refresh_token: refreshToken,
+          }));
+        } else if (code) {
+          ({ error } = await supabase.auth.exchangeCodeForSession(code));
+        } else {
+          throw new Error("The confirmation link is incomplete.");
+        }
 
         if (error) {
           throw error;
@@ -47,7 +76,7 @@ export default function AuthCallbackScreen() {
     return () => {
       isMounted = false;
     };
-  }, [code]);
+  }, [callbackUrl, code]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

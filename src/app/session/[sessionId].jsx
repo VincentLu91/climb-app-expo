@@ -3,11 +3,12 @@ import * as ImagePicker from "expo-image-picker";
 import { router, useLocalSearchParams } from "expo-router";
 import * as Sharing from "expo-sharing";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -27,7 +28,11 @@ import {
 } from "../../lib/coaching";
 import { uploadClimbingAttempt, uploadClimbingPhoto } from "../../lib/media";
 import { capturePostHogEvent } from "../../lib/posthog";
-import { finishSession, getSessionDetail } from "../../lib/sessions";
+import {
+  deleteSession,
+  finishSession,
+  getSessionDetail,
+} from "../../lib/sessions";
 import { colors, fonts, radii, spacing } from "../../theme/tokens";
 
 function formatSessionDate(startedAt) {
@@ -71,6 +76,10 @@ export default function SessionScreen() {
   const [renderingShareClip, setRenderingShareClip] = useState(false);
   const [shareClipUrl, setShareClipUrl] = useState("");
   const [sharingClip, setSharingClip] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isDeletingSession, setIsDeletingSession] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
+  const isDeletingRef = useRef(false);
 
   useEffect(() => {
     async function loadSession() {
@@ -312,6 +321,45 @@ export default function SessionScreen() {
     }
   }
 
+  function openDeleteModal() {
+    if (isDeletingRef.current) {
+      return;
+    }
+    setDeleteError("");
+    setIsDeleteModalOpen(true);
+  }
+
+  function closeDeleteModal() {
+    if (isDeletingRef.current) {
+      return;
+    }
+    setIsDeleteModalOpen(false);
+    setDeleteError("");
+  }
+
+  async function handleConfirmDelete() {
+    if (isDeletingRef.current) {
+      return;
+    }
+
+    isDeletingRef.current = true;
+    setIsDeletingSession(true);
+    setDeleteError("");
+
+    try {
+      await deleteSession(detail?.session?.id);
+      setIsDeleteModalOpen(false);
+      router.replace("/history");
+    } catch (error) {
+      console.error("Failed to delete coaching session:", error);
+      setDeleteError(
+        error?.message || "Failed to delete this session. Please try again.",
+      );
+      isDeletingRef.current = false;
+      setIsDeletingSession(false);
+    }
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.safeArea}>
@@ -371,35 +419,49 @@ export default function SessionScreen() {
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.introSection}>
-            <Text style={styles.eyebrow}>LIVE COACHING SESSION</Text>
-            <Text style={styles.sessionTitle}>Climbing Session</Text>
+          <View style={styles.introRow}>
+            <View style={styles.introTextBlock}>
+              <Text style={styles.eyebrow}>LIVE COACHING SESSION</Text>
+              <Text style={styles.sessionTitle}>Climbing Session</Text>
 
-            <View style={styles.statusRow}>
-              <View
-                style={[
-                  styles.statusPill,
-                  session.ended_at
-                    ? styles.statusPillFinished
-                    : styles.statusPillProgress,
-                ]}
-              >
-                <Text
+              <View style={styles.statusRow}>
+                <View
                   style={[
-                    styles.statusPillText,
+                    styles.statusPill,
                     session.ended_at
-                      ? styles.statusPillTextFinished
-                      : styles.statusPillTextProgress,
+                      ? styles.statusPillFinished
+                      : styles.statusPillProgress,
                   ]}
                 >
-                  {session.ended_at ? "Finished" : "In progress"}
+                  <Text
+                    style={[
+                      styles.statusPillText,
+                      session.ended_at
+                        ? styles.statusPillTextFinished
+                        : styles.statusPillTextProgress,
+                    ]}
+                  >
+                    {session.ended_at ? "Finished" : "In progress"}
+                  </Text>
+                </View>
+
+                <Text style={styles.sessionDate}>
+                  {formatSessionDate(session.started_at)}
                 </Text>
               </View>
-
-              <Text style={styles.sessionDate}>
-                {formatSessionDate(session.started_at)}
-              </Text>
             </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.deleteButton,
+                pressed && styles.deleteButtonPressed,
+                isDeletingSession && styles.deleteButtonDisabled,
+              ]}
+              onPress={openDeleteModal}
+              disabled={isDeletingSession}
+            >
+              <Text style={styles.deleteButtonText}>Delete session</Text>
+            </Pressable>
           </View>
 
           <View style={styles.focusCard}>
@@ -693,6 +755,72 @@ export default function SessionScreen() {
           </View>
         ) : null}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={isDeleteModalOpen}
+        transparent
+        animationType="fade"
+        statusBarTranslucent
+        onRequestClose={() => {
+          if (!isDeletingSession) {
+            closeDeleteModal();
+          }
+        }}
+      >
+        <View style={styles.modalBackdrop}>
+          <Pressable
+            style={StyleSheet.absoluteFillObject}
+            onPress={closeDeleteModal}
+            disabled={isDeletingSession}
+          />
+
+          <View
+            style={styles.modalPanel}
+            accessible
+            accessibilityRole="alert"
+            accessibilityViewIsModal
+            accessibilityLabel="Delete this session?"
+          >
+            <Text style={styles.modalHeading}>Delete this session?</Text>
+            <Text style={styles.modalBody}>
+              This permanently deletes this session, its coaching conversation,
+              analyses, and photos/videos. Your ongoing coaching progress will
+              be kept.
+            </Text>
+
+            {deleteError ? (
+              <Text style={styles.modalError}>{deleteError}</Text>
+            ) : null}
+
+            <View style={styles.modalActions}>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalCancelButton,
+                  pressed && styles.modalCancelButtonPressed,
+                ]}
+                onPress={closeDeleteModal}
+                disabled={isDeletingSession}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </Pressable>
+
+              <Pressable
+                style={({ pressed }) => [
+                  styles.modalConfirmButton,
+                  pressed && styles.modalConfirmButtonPressed,
+                  isDeletingSession && styles.modalConfirmButtonDisabled,
+                ]}
+                onPress={handleConfirmDelete}
+                disabled={isDeletingSession}
+              >
+                <Text style={styles.modalConfirmText}>
+                  {isDeletingSession ? "Deleting..." : "Delete permanently"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -757,7 +885,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     gap: spacing.lg,
   },
-  introSection: {
+  introRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    justifyContent: "space-between",
+    gap: spacing.md,
+  },
+  introTextBlock: {
+    flex: 1,
     gap: spacing.sm,
   },
   eyebrow: {
@@ -815,6 +950,27 @@ const styles = StyleSheet.create({
     fontSize: 11,
     letterSpacing: 0.4,
     color: colors.muted,
+  },
+  deleteButton: {
+    borderWidth: 1,
+    borderColor: colors.warm,
+    backgroundColor: "transparent",
+    borderRadius: radii.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    alignSelf: "flex-start",
+  },
+  deleteButtonPressed: {
+    opacity: 0.8,
+  },
+  deleteButtonDisabled: {
+    opacity: 0.6,
+  },
+  deleteButtonText: {
+    fontFamily: fonts.monoMedium,
+    fontSize: 11,
+    letterSpacing: 0.4,
+    color: colors.warm,
   },
   focusCard: {
     backgroundColor: colors.panel,
@@ -1142,5 +1298,80 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     color: colors.muted,
     textTransform: "uppercase",
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(8, 10, 9, 0.72)",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  modalPanel: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: colors.panel,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.sm,
+    padding: spacing.xl,
+  },
+  modalHeading: {
+    fontFamily: fonts.sansSemiBold,
+    fontSize: 20,
+    letterSpacing: -0.4,
+    color: colors.foreground,
+    marginBottom: spacing.md,
+  },
+  modalBody: {
+    fontFamily: fonts.sans,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.muted,
+  },
+  modalError: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 13,
+    lineHeight: 19,
+    color: colors.warm,
+    marginTop: spacing.md,
+  },
+  modalActions: {
+    flexDirection: "row",
+    justifyContent: "flex-end",
+    gap: spacing.sm,
+    marginTop: spacing.xl,
+  },
+  modalCancelButton: {
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  modalCancelButtonPressed: {
+    opacity: 0.8,
+  },
+  modalCancelText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12,
+    color: colors.muted,
+  },
+  modalConfirmButton: {
+    borderWidth: 1,
+    borderColor: colors.warm,
+    borderRadius: radii.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  modalConfirmButtonPressed: {
+    opacity: 0.8,
+  },
+  modalConfirmButtonDisabled: {
+    opacity: 0.6,
+  },
+  modalConfirmText: {
+    fontFamily: fonts.sansMedium,
+    fontSize: 12,
+    color: colors.warm,
   },
 });

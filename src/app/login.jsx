@@ -1,4 +1,4 @@
-import * as Linking from "expo-linking";
+//import * as Linking from "expo-linking";
 import { useState } from "react";
 import {
   Alert,
@@ -39,7 +39,7 @@ export default function LoginScreen() {
   async function handleSignUp() {
     setLoading(true);
 
-    const emailRedirectTo = Linking.createURL("auth/callback");
+    const emailRedirectTo = "climbapp-dev://auth/callback";
 
     const { error } = await supabase.auth.signUp({
       email,

@@ -167,3 +167,23 @@ export async function finishSession(sessionId) {
 
   return data;
 }
+
+export async function deleteSession(sessionId) {
+  if (!sessionId) {
+    throw new Error("Missing coaching session.");
+  }
+
+  const response = await apiFetch(`/api/coaching-sessions/${sessionId}`, {
+    method: "DELETE",
+  });
+
+  const data = await response.json().catch(() => ({}));
+
+  if (!response.ok) {
+    throw new Error(
+      data.error || "Failed to delete this session. Please try again.",
+    );
+  }
+
+  return data;
+}
