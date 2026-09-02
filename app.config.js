@@ -57,5 +57,6 @@ export default ({ config }) => ({
     "expo-localization",
     "expo-video",
     "expo-sharing",
+    "expo-image",
   ],
 });
