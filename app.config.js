@@ -58,5 +58,6 @@ export default ({ config }) => ({
     "expo-video",
     "expo-sharing",
     "expo-image",
+    "expo-web-browser",
   ],
 });
